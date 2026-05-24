@@ -180,6 +180,10 @@ export default function StudentDashboard() {
   const [aiQuery, setAiQuery] = useState('');
   const [professors, setProfessors] = useState([]);
   const [freeCount, setFreeCount] = useState(0);
+  const [meetings, setMeetings] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+
+  const token = localStorage.getItem('findoorr_token');
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -189,6 +193,8 @@ export default function StudentDashboard() {
       setUserInitial(name.charAt(0).toUpperCase());
     }
     fetchProfessors();
+    fetchMeetings();
+    fetchNotifications();
   }, []);
 
   const fetchProfessors = async () => {
@@ -202,6 +208,32 @@ export default function StudentDashboard() {
     } catch (err) {
       console.log('Could not load professors');
     }
+  };
+
+  const fetchMeetings = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/api/meetings`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMeetings(Array.isArray(data) ? data : []);
+      }
+    } catch (err) { console.log('Could not load meetings'); }
+  };
+
+  const fetchNotifications = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_URL}/api/notifications`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(Array.isArray(data) ? data.slice(0, 3) : []);
+      }
+    } catch (err) { console.log('Could not load notifications'); }
   };
 
   return (
@@ -228,10 +260,10 @@ export default function StudentDashboard() {
 
           <div className="sd-stats">
             {[
-              { icon: '📅', color: 'blue', num: 0, label: 'Upcoming Meetings' },
+              { icon: '📅', color: 'blue', num: meetings.filter(m => m.status === 'approved').length, label: 'Upcoming Meetings' },
               { icon: '✅', color: 'green', num: freeCount, label: 'Professors Available' },
-              { icon: '⏳', color: 'orange', num: 0, label: 'Pending Requests' },
-              { icon: '🔔', color: 'yellow', num: 0, label: 'New Notifications' },
+              { icon: '⏳', color: 'orange', num: meetings.filter(m => m.status === 'pending').length, label: 'Pending Requests' },
+              { icon: '🔔', color: 'yellow', num: notifications.length, label: 'New Notifications' },
             ].map(s => (
               <div className="sd-stat-card" key={s.label}>
                 <div className={`sd-stat-icon ${s.color}`}>{s.icon}</div>
@@ -305,7 +337,20 @@ export default function StudentDashboard() {
                   </div>
                 ))}
               </div>
-              <div className="sd-empty">📭 no meetings yet — book one!</div>
+              {meetings.length === 0 ? (
+                <div className="sd-empty">📭 no meetings yet — book one!</div>
+              ) : (
+                meetings.slice(0, 3).map(m => (
+                  <div key={m.id} style={{display:'flex',alignItems:'center',gap:'10px',padding:'10px 0',borderBottom:'1.5px dashed var(--border, #c9b99a)'}}>
+                    <div style={{background:'#e8f0fe',borderRadius:'10px',padding:'8px',fontSize:'20px',minWidth:'40px',textAlign:'center'}}>📅</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:'13px',fontWeight:'700',color:'var(--text-primary, #3d2c1e)'}}>{m.professor_name || 'Professor'}</div>
+                      <div style={{fontSize:'11px',color:'var(--text-muted, #9c8060)'}}>{m.purpose || 'Meeting'} · {m.time || '—'}</div>
+                    </div>
+                    <span style={{fontSize:'10px',fontWeight:'700',padding:'3px 10px',borderRadius:'10px',background:m.status==='approved'?'#e8f5e9':m.status==='pending'?'#fff8e1':'#fde8e8',color:m.status==='approved'?'#2e7d32':m.status==='pending'?'#f57f17':'#c62828',border:`1px solid ${m.status==='approved'?'#a5d6a7':m.status==='pending'?'#ffe082':'#ef9a9a'}`}}>{m.status}</span>
+                  </div>
+                ))
+              )}
             </div>
 
             <div style={{display:'flex', flexDirection:'column', gap:'16px'}}>
@@ -337,7 +382,19 @@ export default function StudentDashboard() {
                   🔔 notifications
                   <span className="sd-view-all" onClick={() => navigate('/student/notifications')}>view all</span>
                 </div>
-                <div className="sd-empty">🔕 no notifications yet</div>
+                {notifications.length === 0 ? (
+                  <div className="sd-empty">🔕 no notifications yet</div>
+                ) : (
+                  notifications.map(n => (
+                    <div key={n.id} style={{display:'flex',gap:'10px',padding:'10px 0',borderBottom:'1.5px dashed var(--border, #c9b99a)',cursor:'pointer'}} onClick={() => navigate('/student/notifications')}>
+                      <div style={{fontSize:'20px',minWidth:'32px',textAlign:'center'}}>{n.type==='meeting_request'?'📅':n.type==='meeting_update'?'✅':'🔔'}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:'12px',fontWeight:'700',color:'var(--text-primary, #3d2c1e)'}}>{n.title}</div>
+                        <div style={{fontSize:'11px',color:'var(--text-muted, #9c8060)',marginTop:'2px'}}>{n.message?.slice(0, 60)}{n.message?.length > 60 ? '...' : ''}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
