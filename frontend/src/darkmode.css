@@ -1,0 +1,173 @@
+/* ===== FINDOORR DARK MODE ===== */
+
+:root {
+  --bg-page: #f5efe0;
+  --bg-card: #fffdf5;
+  --bg-input: #faf6ee;
+  --bg-subtle: #f0e8d8;
+  --border: #c9b99a;
+  --border-light: #e0d0b8;
+  --text-primary: #3d2c1e;
+  --text-secondary: #5c4033;
+  --text-muted: #9c8060;
+  --accent: #c0570e;
+  --accent-dark: #3d2c1e;
+  --shadow: #c9b99a;
+  --grid-color: rgba(180,160,120,0.18);
+}
+
+[data-theme="dark"] {
+  --bg-page: #1a1210;
+  --bg-card: #2a1f1a;
+  --bg-input: #231a16;
+  --bg-subtle: #2f2218;
+  --border: #4a3428;
+  --border-light: #3a2820;
+  --text-primary: #f5efe0;
+  --text-secondary: #d4c4a8;
+  --text-muted: #9c8060;
+  --accent: #e07040;
+  --accent-dark: #f5efe0;
+  --shadow: #0a0806;
+  --grid-color: rgba(80,60,40,0.3);
+}
+
+/* Apply CSS variables to all page backgrounds */
+[data-theme="dark"] body {
+  background-color: var(--bg-page) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Dark mode for all page containers */
+[data-theme="dark"] .findoorr-page,
+[data-theme="dark"] .sd-page,
+[data-theme="dark"] .fp-page,
+[data-theme="dark"] .pp-page,
+[data-theme="dark"] .cm-page,
+[data-theme="dark"] .rm-page,
+[data-theme="dark"] .at-page,
+[data-theme="dark"] .an-page,
+[data-theme="dark"] .ai-page,
+[data-theme="dark"] .pd-page {
+  background-color: var(--bg-page) !important;
+  background-image:
+    repeating-linear-gradient(90deg, transparent, transparent 60px, var(--grid-color) 60px, var(--grid-color) 62px),
+    repeating-linear-gradient(180deg, transparent, transparent 60px, var(--grid-color) 60px, var(--grid-color) 62px) !important;
+}
+
+/* Dark mode cards */
+[data-theme="dark"] .findoorr-card,
+[data-theme="dark"] .sd-card,
+[data-theme="dark"] .fp-card,
+[data-theme="dark"] .cm-card,
+[data-theme="dark"] .rm-card,
+[data-theme="dark"] .at-card,
+[data-theme="dark"] .an-card,
+[data-theme="dark"] .pd-card {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+  box-shadow: 4px 4px 0px var(--shadow) !important;
+}
+
+/* Dark mode navbars */
+[data-theme="dark"] .sd-nav,
+[data-theme="dark"] .fp-nav,
+[data-theme="dark"] .cm-nav,
+[data-theme="dark"] .rm-nav,
+[data-theme="dark"] .at-nav,
+[data-theme="dark"] .an-nav,
+[data-theme="dark"] .ai-nav,
+[data-theme="dark"] .pd-nav {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+}
+
+/* Dark mode bottom navs */
+[data-theme="dark"] .sd-bottom-nav,
+[data-theme="dark"] .cm-bottom-nav,
+[data-theme="dark"] .rm-bottom-nav,
+[data-theme="dark"] .at-bottom-nav,
+[data-theme="dark"] .an-bottom-nav,
+[data-theme="dark"] .ai-input-area {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+}
+
+/* Dark mode text */
+[data-theme="dark"] .sd-greeting,
+[data-theme="dark"] .cm-nav-title,
+[data-theme="dark"] .rm-nav-title,
+[data-theme="dark"] .at-nav-title,
+[data-theme="dark"] .an-nav-title {
+  color: var(--text-primary) !important;
+}
+
+/* Dark mode inputs */
+[data-theme="dark"] .cm-search,
+[data-theme="dark"] .rm-textarea,
+[data-theme="dark"] .ai-input,
+[data-theme="dark"] .field-input {
+  background: var(--bg-input) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Dark mode stats */
+[data-theme="dark"] .sd-stat,
+[data-theme="dark"] .at-stat,
+[data-theme="dark"] .an-stat,
+[data-theme="dark"] .cm-stat {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+}
+
+/* Dark mode prof items */
+[data-theme="dark"] .cm-prof-item:hover,
+[data-theme="dark"] .at-student-row:hover,
+[data-theme="dark"] .an-student-row:hover {
+  background: var(--bg-subtle) !important;
+}
+
+/* Dark mode AI chat bubbles */
+[data-theme="dark"] .ai-bubble.bot {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Dark mode welcome card */
+[data-theme="dark"] .ai-welcome {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+}
+
+/* Dark mode quick prompts */
+[data-theme="dark"] .ai-quick-prompt {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+}
+[data-theme="dark"] .ai-quick-prompt:hover {
+  background: var(--bg-subtle) !important;
+}
+
+/* Dark mode login card */
+[data-theme="dark"] .findoorr-card {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+}
+[data-theme="dark"] .tab-row {
+  background: var(--bg-subtle) !important;
+  border-color: var(--border) !important;
+}
+[data-theme="dark"] .role-btn.inactive {
+  background: var(--bg-subtle) !important;
+  border-color: var(--border) !important;
+  color: var(--text-muted) !important;
+}
+[data-theme="dark"] .logo-text { color: var(--text-primary) !important; }
+[data-theme="dark"] .tagline { color: var(--text-muted) !important; }
+
+/* Smooth transition for everything */
+*, *::before, *::after {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease !important;
+}
