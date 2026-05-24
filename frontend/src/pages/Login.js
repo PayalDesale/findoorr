@@ -8,6 +8,8 @@ import {
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
+const API_URL = process.env.REACT_APP_API_URL || 'https://findoorr-production.up.railway.app';
+
 const keyframes = `
   @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=DM+Sans:wght@400;500;600&display=swap');
 
@@ -82,13 +84,15 @@ const keyframes = `
   .footer-link { color: #c0570e; cursor: pointer; font-weight: 600; text-decoration: underline; text-decoration-style: wavy; }
 
   .stamp { position: absolute; top: -16px; right: 24px; background: #c0570e; color: #fff; font-family: 'Caveat', cursive; font-size: 13px; font-weight: 700; padding: 4px 14px; border-radius: 20px; transform: rotate(2deg); box-shadow: 2px 2px 0px #3d2c1e; }
+
+  .extra-fields { margin-bottom: 0; }
 `;
 
 export default function Login() {
   const navigate = useNavigate();
   const [mode, setMode] = useState('login');
   const [role, setRole] = useState('student');
-  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', department: '', phone: '' });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -102,21 +106,46 @@ export default function Login() {
     setLoading(true);
     try {
       if (mode === 'register') {
-        // Create account
+        // 1. Create Firebase account
         const cred = await createUserWithEmailAndPassword(auth, form.email, form.password);
-        // Set display name
+        
+        // 2. Set display name in Firebase
         await updateProfile(cred.user, { displayName: form.name });
-        // Save user profile to Firestore
+        
+        // 3. Save to Firestore
         await setDoc(doc(db, 'users', cred.user.uid), {
           name: form.name,
           email: form.email,
           role: role,
+          department: form.department || '',
+          phone: form.phone || '',
           createdAt: new Date().toISOString(),
         });
+
+        // 4. Save to Railway PostgreSQL backend
+        try {
+          await fetch(`${API_URL}/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: form.name,
+              email: form.email,
+              password: form.password,
+              role: role,
+              department: form.department || '',
+              phone: form.phone || '',
+              firebase_uid: cred.user.uid,
+            }),
+          });
+        } catch (backendErr) {
+          // Backend save failed but Firebase succeeded — not critical
+          console.log('Backend sync failed, continuing with Firebase only');
+        }
+
         setSuccess('account created! logging you in... 🎉');
         setTimeout(() => navigate(role === 'student' ? '/student/dashboard' : '/professor/dashboard'), 1000);
       } else {
-        // Sign in
+        // Sign in with Firebase
         await signInWithEmailAndPassword(auth, form.email, form.password);
         navigate(role === 'student' ? '/student/dashboard' : '/professor/dashboard');
       }
@@ -167,14 +196,20 @@ export default function Login() {
           {success && <div className="success-box">✅ {success}</div>}
 
           {mode === 'register' && (
-            <>
+            <div className="extra-fields">
               <label className="field-label">your name</label>
-              <input className="field-input" placeholder="e.g. Tejas Nair" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-            </>
+              <input className="field-input" placeholder="e.g. Payal Desale" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+              
+              <label className="field-label">department</label>
+              <input className="field-input" placeholder="e.g. Computer Engineering" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} />
+              
+              <label className="field-label">phone (optional)</label>
+              <input className="field-input" placeholder="e.g. 9876543210" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
+            </div>
           )}
 
           <label className="field-label">email</label>
-          <input className="field-input" type="email" placeholder="you@college.edu" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+          <input className="field-input" type="email" placeholder="you@mitaoe.ac.in" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
 
           <label className="field-label">password</label>
           <input className="field-input" type="password" placeholder="••••••••" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
