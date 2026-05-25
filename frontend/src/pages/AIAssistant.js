@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth } from '../firebase';
 
+const API_URL = process.env.REACT_APP_API_URL || 'https://findoorr-production.up.railway.app';
+
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=DM+Sans:wght@400;500;600&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -99,8 +101,6 @@ const styles = `
   .ai-typing-dot:nth-child(3) { animation-delay: 0.4s; }
   @keyframes ai-typing { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
 
-  .ai-error { background: #fde8e8; border: 1.5px solid #ef9a9a; border-radius: 10px; padding: 10px 14px; color: #c62828; font-size: 13px; margin-top: 4px; }
-
   .ai-input-area {
     background: #fffdf5; border-top: 2px solid #c9b99a;
     padding: 14px 20px; flex-shrink: 0; box-shadow: 0 -3px 0px #c9b99a;
@@ -129,41 +129,31 @@ const styles = `
     box-shadow: 3px 3px 0px #c0570e; transition: all 0.15s; flex-shrink: 0;
   }
   .ai-send-btn:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0px #c0570e; }
-  .ai-send-btn:active { transform: translate(1px,1px); box-shadow: 1px 1px 0px #c0570e; }
   .ai-send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 `;
 
 const quickPrompts = [
-  { icon: '📍', text: 'Where is Dr. Sharma right now?' },
+  { icon: '📍', text: 'Where is my professor right now?' },
   { icon: '📅', text: 'Who is free for a meeting today?' },
-  { icon: '🕐', text: "What are Prof. Kulkarni's office hours?" },
-  { icon: '📋', text: 'Show me the CS department schedule' },
+  { icon: '🕐', text: 'What are office hours?' },
+  { icon: '📋', text: 'Show me the college schedule' },
   { icon: '❓', text: 'How do I request a meeting on Findoorr?' },
-  { icon: '🗺️', text: 'Where is the AI Lab on campus?' },
+  { icon: '🗺️', text: 'Where is the CS lab on campus?' },
 ];
 
-const suggestions = ['Is Dr. Mehta free?', 'Cancel my meeting', 'Who teaches DSA?', 'Room 204 location'];
+const suggestions = ['Is my professor free?', 'Cancel my meeting', 'How to book meeting?', 'Campus locations'];
 
-const SYSTEM_PROMPT = `You are Findoorr AI, a smart campus assistant for an Indian engineering college. You help students find professors, check availability, navigate campus, and manage meetings.
+const SYSTEM_PROMPT = `You are Findoorr AI, a smart campus assistant for MIT Academy of Engineering, Pune. You help students find professors, check availability, navigate campus, and manage meetings.
 
-You know these professors:
-- Dr. Rajesh Sharma (Computer Science) - Room 204, CS Block - teaches DSA, Algorithms, C++ - office hours Mon/Wed 11AM-12PM - currently FREE
-- Prof. Anjali Kulkarni (Artificial Intelligence) - AI Lab Block B - teaches ML, Deep Learning, Python - office hours Tue/Fri 10AM-11AM - currently IN CLASS
-- Dr. Vikas Mehta (Database Systems) - Faculty Lounge - teaches DBMS, SQL - office hours Mon/Thu 2PM-4PM - currently AWAY
-- Prof. Sneha Desai (Software Engineering) - Room 112, SE Block - teaches Agile, Design Patterns - office hours Wed/Fri 3PM-5PM - currently FREE
-- Dr. Pankaj Joshi (Computer Networks) - Room 209, CS Block - teaches Networking, TCP/IP - office hours Tue/Thu 11AM-1PM - currently FREE
-
-Campus locations:
-- CS Block: Ground floor, main building entrance left
-- AI Lab: Block B, 2nd floor near elevator
-- Library: Central building, all floors
-- Canteen: Block C, ground floor
-- Admin Block: Main gate, right side
-- Sports Ground: Behind Block D
+The app Findoorr allows students to:
+- Find professors and check their availability
+- Request meetings with professors
+- Navigate the campus map
+- Get notifications about meetings
 
 Meeting request process: Go to Find Professor > Click professor > Request Meeting > Choose date/time/type > Submit
 
-Keep responses helpful, friendly, concise and campus-focused. Use emojis naturally. If asked something outside campus scope, gently redirect to campus topics.`;
+Keep responses helpful, friendly, concise and campus-focused. Use emojis naturally.`;
 
 export default function AIAssistant() {
   const navigate = useNavigate();
@@ -195,45 +185,36 @@ export default function AIAssistant() {
     setLoading(true);
 
     try {
-      const apiKey = process.env.REACT_APP_GROQ_API_KEY;
-
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      const response = await fetch(`${API_URL}/api/ai/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'llama3-8b-8192',
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            ...newMessages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text }))
-          ],
-          max_tokens: 500,
-          temperature: 0.7,
+          messages: newMessages.map(m => ({
+            role: m.role === 'user' ? 'user' : 'assistant',
+            content: m.text
+          })),
+          systemPrompt: SYSTEM_PROMPT,
         })
       });
 
       const data = await response.json();
 
-      if (data.choices && data.choices[0]) {
-        const botMsg = {
+      if (data.reply) {
+        setMessages(prev => [...prev, {
           role: 'bot',
-          text: data.choices[0].message.content,
+          text: data.reply,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setMessages(prev => [...prev, botMsg]);
+        }]);
       } else {
-        throw new Error('No response from AI');
+        throw new Error('No reply');
       }
     } catch (err) {
-      const errMsg = {
+      setMessages(prev => [...prev, {
         role: 'bot',
-        text: '⚠️ Sorry, I couldn\'t connect right now. Please check your internet and try again!',
+        text: '⚠️ Sorry, I could not connect right now. Please try again!',
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         error: true
-      };
-      setMessages(prev => [...prev, errMsg]);
+      }]);
     } finally {
       setLoading(false);
     }
@@ -254,18 +235,17 @@ export default function AIAssistant() {
         </div>
 
         <div className="ai-chat-area" ref={chatRef}>
-
           {showWelcome && (
             <>
               <div className="ai-welcome">
                 <div className="ai-welcome-icon">🤖</div>
-                <div className="ai-welcome-title">hey {userName}! I'm your AI assistant</div>
+                <div className="ai-welcome-title">hey {userName}! I am your AI assistant</div>
                 <div className="ai-welcome-sub">
                   Ask me anything about professor schedules, campus locations,<br />
-                  office hours, or how to book meetings. I'm here to help!
+                  office hours, or how to book meetings. I am here to help!
                 </div>
               </div>
-              <div className="ai-quick-title">✦ try asking me...</div>
+              <div className="ai-quick-title">try asking me...</div>
               <div className="ai-quick-grid">
                 {quickPrompts.map(q => (
                   <div key={q.text} className="ai-quick-prompt" onClick={() => sendMessage(q.text)}>
@@ -281,9 +261,7 @@ export default function AIAssistant() {
             <div key={i} className={`ai-msg-row ${m.role}`}>
               <div className={`ai-msg-avatar ${m.role}`}>{m.role === 'bot' ? '🤖' : userInitial}</div>
               <div className={`ai-bubble ${m.role}`}>
-                {m.text.split('\n').map((line, j) => (
-                  <div key={j}>{line}</div>
-                ))}
+                {m.text.split('\n').map((line, j) => <div key={j}>{line}</div>)}
                 <span className="ai-bubble-time">{m.time}</span>
               </div>
             </div>
@@ -301,7 +279,6 @@ export default function AIAssistant() {
               </div>
             </div>
           )}
-
         </div>
 
         <div className="ai-input-area">
