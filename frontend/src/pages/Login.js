@@ -7,6 +7,7 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { saveToken } from '../api';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://findoorr-production.up.railway.app';
 
@@ -88,6 +89,25 @@ const keyframes = `
   .extra-fields { margin-bottom: 0; }
 `;
 
+// Helper — get Railway JWT token, save it to localStorage
+const syncWithBackend = async (email, password) => {
+  try {
+    const res = await fetch(`${API_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (data.token) {
+      saveToken(data.token);
+      return data;
+    }
+  } catch (e) {
+    console.log('Backend sync failed:', e.message);
+  }
+  return null;
+};
+
 export default function Login() {
   const navigate = useNavigate();
   const [mode, setMode] = useState('login');
@@ -108,10 +128,10 @@ export default function Login() {
       if (mode === 'register') {
         // 1. Create Firebase account
         const cred = await createUserWithEmailAndPassword(auth, form.email, form.password);
-        
+
         // 2. Set display name in Firebase
         await updateProfile(cred.user, { displayName: form.name });
-        
+
         // 3. Save to Firestore
         await setDoc(doc(db, 'users', cred.user.uid), {
           name: form.name,
@@ -122,9 +142,9 @@ export default function Login() {
           createdAt: new Date().toISOString(),
         });
 
-        // 4. Save to Railway PostgreSQL backend
+        // 4. Register in Railway PostgreSQL backend + get JWT
         try {
-          await fetch(`${API_URL}/api/auth/register`, {
+          const res = await fetch(`${API_URL}/api/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -133,20 +153,26 @@ export default function Login() {
               password: form.password,
               role: role,
               department: form.department || '',
-              phone: form.phone || '',
-              firebase_uid: cred.user.uid,
             }),
           });
+          const data = await res.json();
+          // Save JWT token so meetings/notifications work immediately
+          if (data.token) saveToken(data.token);
         } catch (backendErr) {
-          // Backend save failed but Firebase succeeded — not critical
           console.log('Backend sync failed, continuing with Firebase only');
         }
 
         setSuccess('account created! logging you in... 🎉');
         setTimeout(() => navigate(role === 'student' ? '/student/dashboard' : '/professor/dashboard'), 1000);
+
       } else {
-        // Sign in with Firebase
+        // 1. Sign in with Firebase
         await signInWithEmailAndPassword(auth, form.email, form.password);
+
+        // 2. ⭐ KEY FIX: Also get JWT from Railway backend and save it
+        await syncWithBackend(form.email, form.password);
+
+        // 3. Navigate to dashboard
         navigate(role === 'student' ? '/student/dashboard' : '/professor/dashboard');
       }
     } catch (err) {
@@ -199,10 +225,10 @@ export default function Login() {
             <div className="extra-fields">
               <label className="field-label">your name</label>
               <input className="field-input" placeholder="e.g. Payal Desale" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-              
+
               <label className="field-label">department</label>
               <input className="field-input" placeholder="e.g. Computer Engineering" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} />
-              
+
               <label className="field-label">phone (optional)</label>
               <input className="field-input" placeholder="e.g. 9876543210" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
             </div>
@@ -216,7 +242,10 @@ export default function Login() {
             onKeyDown={e => e.key === 'Enter' && handleSubmit()} />
 
           <button className="submit-btn" onClick={handleSubmit} disabled={loading}>
-            {loading ? <><div className="spinner" /> {mode === 'login' ? 'signing in...' : 'creating account...'}</> : mode === 'login' ? "let's go →" : "create account →"}
+            {loading
+              ? <><div className="spinner" /> {mode === 'login' ? 'signing in...' : 'creating account...'}</>
+              : mode === 'login' ? "let's go →" : "create account →"
+            }
           </button>
 
           <p className="footer-text">
