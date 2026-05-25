@@ -89,25 +89,6 @@ const keyframes = `
   .extra-fields { margin-bottom: 0; }
 `;
 
-// Helper — get Railway JWT token, save it to localStorage
-const syncWithBackend = async (email, password) => {
-  try {
-    const res = await fetch(`${API_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (data.token) {
-      saveToken(data.token);
-      return data;
-    }
-  } catch (e) {
-    console.log('Backend sync failed:', e.message);
-  }
-  return null;
-};
-
 export default function Login() {
   const navigate = useNavigate();
   const [mode, setMode] = useState('login');
@@ -116,6 +97,51 @@ export default function Login() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // ⭐ KEY FUNCTION: Firebase login ke baad Railway JWT bhi save karo
+  const syncWithBackend = async (email, password, userName, userRole) => {
+    // Step 1: Login try karo Railway pe
+    try {
+      const loginRes = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const loginData = await loginRes.json();
+      if (loginData.token) {
+        saveToken(loginData.token);
+        console.log('✅ JWT saved from login');
+        return loginData;
+      }
+    } catch (e) {
+      console.log('Login attempt failed:', e.message);
+    }
+
+    // Step 2: Agar login fail hua (user Railway mein nahi hai) toh register karo
+    try {
+      const regRes = await fetch(`${API_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: userName || email.split('@')[0],
+          email,
+          password,
+          role: userRole || 'student',
+          department: '',
+        }),
+      });
+      const regData = await regRes.json();
+      if (regData.token) {
+        saveToken(regData.token);
+        console.log('✅ JWT saved from auto-register');
+        return regData;
+      }
+    } catch (e) {
+      console.log('Auto-register failed:', e.message);
+    }
+
+    return null;
+  };
 
   const handleSubmit = async () => {
     setError('');
@@ -126,13 +152,13 @@ export default function Login() {
     setLoading(true);
     try {
       if (mode === 'register') {
-        // 1. Create Firebase account
+        // 1. Firebase account banao
         const cred = await createUserWithEmailAndPassword(auth, form.email, form.password);
 
-        // 2. Set display name in Firebase
+        // 2. Firebase mein naam set karo
         await updateProfile(cred.user, { displayName: form.name });
 
-        // 3. Save to Firestore
+        // 3. Firestore mein save karo
         await setDoc(doc(db, 'users', cred.user.uid), {
           name: form.name,
           email: form.email,
@@ -142,7 +168,7 @@ export default function Login() {
           createdAt: new Date().toISOString(),
         });
 
-        // 4. Register in Railway PostgreSQL backend + get JWT
+        // 4. Railway backend mein register karo + JWT lo
         try {
           const res = await fetch(`${API_URL}/api/auth/register`, {
             method: 'POST',
@@ -156,23 +182,29 @@ export default function Login() {
             }),
           });
           const data = await res.json();
-          // Save JWT token so meetings/notifications work immediately
-          if (data.token) saveToken(data.token);
+          if (data.token) {
+            saveToken(data.token);
+            console.log('✅ JWT saved on register');
+          }
         } catch (backendErr) {
-          console.log('Backend sync failed, continuing with Firebase only');
+          console.log('Backend register failed, Firebase only');
         }
 
         setSuccess('account created! logging you in... 🎉');
         setTimeout(() => navigate(role === 'student' ? '/student/dashboard' : '/professor/dashboard'), 1000);
 
       } else {
-        // 1. Sign in with Firebase
-        await signInWithEmailAndPassword(auth, form.email, form.password);
+        // LOGIN FLOW
 
-        // 2. ⭐ KEY FIX: Also get JWT from Railway backend and save it
-        await syncWithBackend(form.email, form.password);
+        // 1. Firebase se login karo
+        const cred = await signInWithEmailAndPassword(auth, form.email, form.password);
 
-        // 3. Navigate to dashboard
+        // 2. ⭐ Railway backend se JWT lo aur save karo
+        // Agar user Railway mein nahi hai toh auto-register karta hai
+        const userName = cred.user.displayName || form.email.split('@')[0];
+        await syncWithBackend(form.email, form.password, userName, role);
+
+        // 3. Dashboard pe jao
         navigate(role === 'student' ? '/student/dashboard' : '/professor/dashboard');
       }
     } catch (err) {
@@ -224,21 +256,26 @@ export default function Login() {
           {mode === 'register' && (
             <div className="extra-fields">
               <label className="field-label">your name</label>
-              <input className="field-input" placeholder="e.g. Payal Desale" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+              <input className="field-input" placeholder="e.g. Payal Desale" value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })} />
 
               <label className="field-label">department</label>
-              <input className="field-input" placeholder="e.g. Computer Engineering" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} />
+              <input className="field-input" placeholder="e.g. Computer Engineering" value={form.department}
+                onChange={e => setForm({ ...form, department: e.target.value })} />
 
               <label className="field-label">phone (optional)</label>
-              <input className="field-input" placeholder="e.g. 9876543210" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
+              <input className="field-input" placeholder="e.g. 9876543210" value={form.phone}
+                onChange={e => setForm({ ...form, phone: e.target.value })} />
             </div>
           )}
 
           <label className="field-label">email</label>
-          <input className="field-input" type="email" placeholder="you@mitaoe.ac.in" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+          <input className="field-input" type="email" placeholder="you@mitaoe.ac.in" value={form.email}
+            onChange={e => setForm({ ...form, email: e.target.value })} />
 
           <label className="field-label">password</label>
-          <input className="field-input" type="password" placeholder="••••••••" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+          <input className="field-input" type="password" placeholder="••••••••" value={form.password}
+            onChange={e => setForm({ ...form, password: e.target.value })}
             onKeyDown={e => e.key === 'Enter' && handleSubmit()} />
 
           <button className="submit-btn" onClick={handleSubmit} disabled={loading}>
