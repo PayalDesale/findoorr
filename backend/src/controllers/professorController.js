@@ -3,7 +3,7 @@ const pool = require('../config/db');
 const getAllProfessors = async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, name, email, department, status, rating 
+      `SELECT id, name, email, department, status 
        FROM users WHERE role = 'professor' ORDER BY name`
     );
     res.json(result.rows);
@@ -15,7 +15,7 @@ const getAllProfessors = async (req, res) => {
 const getProfessorById = async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, name, email, department, status, rating, bio
+      `SELECT id, name, email, department, status, bio
        FROM users WHERE id = $1 AND role = 'professor'`, [req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ message: 'Professor not found' });
