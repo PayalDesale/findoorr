@@ -1,5 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+const API_URL = process.env.REACT_APP_API_URL || 'https://findoorr-production.up.railway.app';
+
+// Fixed building positions on the SVG map
+const BUILDINGS = [
+  { id: 'cs', name: 'CS Block', x: 180, y: 120, w: 120, h: 70, color: '#e8d5b0' },
+  { id: 'it', name: 'IT Block', x: 340, y: 120, w: 120, h: 70, color: '#d5e8d4' },
+  { id: 'mech', name: 'Mech Block', x: 180, y: 230, w: 120, h: 70, color: '#d4d5e8' },
+  { id: 'civil', name: 'Civil Block', x: 340, y: 230, w: 120, h: 70, color: '#e8d4d4' },
+  { id: 'admin', name: 'Admin Block', x: 500, y: 175, w: 110, h: 70, color: '#e8e4d0' },
+  { id: 'library', name: 'Library', x: 60, y: 175, w: 90, h: 70, color: '#d0e8e4' },
+];
+
+// Assign buildings to professors based on department
+const getDeptBuilding = (dept) => {
+  if (!dept) return BUILDINGS[0];
+  const d = dept.toLowerCase();
+  if (d.includes('computer') || d.includes('cs')) return BUILDINGS[0];
+  if (d.includes('it') || d.includes('information')) return BUILDINGS[1];
+  if (d.includes('mech')) return BUILDINGS[2];
+  if (d.includes('civil')) return BUILDINGS[3];
+  return BUILDINGS[0];
+};
+
+// Give each professor a slightly different pin position within their building
+const getPinPos = (building, index) => ({
+  x: building.x + 20 + (index % 3) * 30,
+  y: building.y + 20 + Math.floor(index / 3) * 20,
+});
+
+const STATUS_COLOR = {
+  free: '#4caf50',
+  busy: '#f44336',
+  'in-class': '#ff9800',
+  offline: '#9e9e9e',
+};
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=DM+Sans:wght@400;500;600&display=swap');
@@ -23,9 +59,9 @@ const styles = `
   .cm-back {
     width: 36px; height: 36px; background: #f0e8d8; border: 2px solid #c9b99a;
     border-radius: 10px; display: flex; align-items: center; justify-content: center;
-    cursor: pointer; font-size: 16px; transition: all 0.15s; flex-shrink: 0;
+    cursor: pointer; font-size: 16px; transition: all 0.15s;
   }
-  .cm-back:hover { background: #e8dcc8; transform: translateY(-1px); }
+  .cm-back:hover { background: #e8dcc8; }
   .cm-nav-title { font-family: 'Caveat', cursive; font-size: 24px; font-weight: 700; color: #3d2c1e; flex: 1; }
   .cm-live-badge {
     display: flex; align-items: center; gap: 6px; background: #e8f5e9;
@@ -40,7 +76,6 @@ const styles = `
 
   .cm-content { max-width: 960px; margin: 0 auto; padding: 20px; }
 
-  /* STATS ROW */
   .cm-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
   .cm-stat {
     background: #fffdf5; border: 2px solid #c9b99a; border-radius: 14px;
@@ -48,398 +83,286 @@ const styles = `
     box-shadow: 3px 3px 0px #c9b99a;
   }
   .cm-stat-icon { font-size: 22px; }
-  .cm-stat-num { font-family: 'Caveat', cursive; font-size: 24px; font-weight: 700; color: #c0570e; line-height: 1; }
-  .cm-stat-label { font-size: 10px; color: #9c8060; font-weight: 600; }
+  .cm-stat-info { flex: 1; }
+  .cm-stat-val { font-family: 'Caveat', cursive; font-size: 26px; font-weight: 700; color: #3d2c1e; line-height: 1; }
+  .cm-stat-label { font-size: 11px; color: #9c8060; font-weight: 600; }
 
-  /* FLOOR TABS */
-  .cm-floor-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
-  .cm-floor-tab {
-    padding: 8px 18px; border-radius: 10px; border: 2px solid #c9b99a;
-    background: #f0e8d8; color: #5c4033; font-size: 13px; font-weight: 600;
-    cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif;
-    box-shadow: 2px 2px 0px #c9b99a;
+  .cm-map-card {
+    background: #fffdf5; border: 2px solid #c9b99a; border-radius: 20px;
+    padding: 20px; box-shadow: 5px 5px 0px #c9b99a; margin-bottom: 20px;
   }
-  .cm-floor-tab.active {
-    background: #3d2c1e; border-color: #3d2c1e; color: #f5efe0;
-    box-shadow: 2px 2px 0px #c0570e;
-  }
+  .cm-map-title { font-family: 'Caveat', cursive; font-size: 20px; font-weight: 700; color: #3d2c1e; margin-bottom: 16px; }
 
-  /* MAP AREA */
-  .cm-map-wrap {
-    background: #e8f4f8; border: 2px solid #b8d8e8; border-radius: 18px;
-    overflow: hidden; margin-bottom: 20px; position: relative;
-    box-shadow: 4px 4px 0px #b8d8e8;
-  }
-  .cm-map-inner {
-    width: 100%; height: 420px; position: relative;
-    background: linear-gradient(135deg, #e8f4f8, #ddeef5);
-  }
-  .cm-map-grid-bg {
-    position: absolute; inset: 0;
-    background-image:
-      repeating-linear-gradient(0deg,rgba(100,150,180,0.12) 0,rgba(100,150,180,0.12) 1px,transparent 1px,transparent 40px),
-      repeating-linear-gradient(90deg,rgba(100,150,180,0.12) 0,rgba(100,150,180,0.12) 1px,transparent 1px,transparent 40px);
-  }
+  .cm-svg-wrap { width: 100%; overflow-x: auto; border: 2px solid #e0d0b8; border-radius: 14px; background: #f9f4e8; }
 
-  /* BUILDINGS */
-  .cm-building {
-    position: absolute; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    flex-direction: column; gap: 2px; cursor: pointer; transition: all 0.2s;
-    border: 2px solid;
-  }
-  .cm-building:hover { transform: scale(1.05); z-index: 10; }
-  .cm-building-label { font-size: 10px; font-weight: 700; text-align: center; line-height: 1.2; padding: 0 4px; }
-  .cm-building-icon { font-size: 18px; }
+  .cm-legend { display: flex; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
+  .cm-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #5c4033; }
+  .cm-legend-dot { width: 10px; height: 10px; border-radius: 50%; }
 
-  .cm-building.cs { background: rgba(197,168,121,0.4); border-color: rgba(160,130,90,0.6); color: #5c4033; }
-  .cm-building.ai { background: rgba(144,202,249,0.4); border-color: rgba(100,160,210,0.6); color: #1a5276; }
-  .cm-building.lib { background: rgba(165,214,167,0.4); border-color: rgba(100,170,110,0.6); color: #1b5e20; }
-  .cm-building.admin { background: rgba(255,204,128,0.4); border-color: rgba(210,160,60,0.6); color: #7c4a00; }
-  .cm-building.canteen { background: rgba(239,154,154,0.4); border-color: rgba(200,100,100,0.6); color: #7f1d1d; }
-  .cm-building.lab { background: rgba(206,147,216,0.4); border-color: rgba(160,100,190,0.6); color: #4a148c; }
-  .cm-building.sports { background: rgba(128,222,234,0.4); border-color: rgba(80,180,200,0.6); color: #006064; }
-  .cm-building.parking { background: rgba(200,200,200,0.4); border-color: rgba(150,150,150,0.6); color: #424242; }
-
-  /* PATHS */
-  .cm-path {
-    position: absolute; background: rgba(180,160,120,0.3);
-    border-radius: 4px;
+  .cm-profs { margin-top: 20px; }
+  .cm-profs-title { font-family: 'Caveat', cursive; font-size: 20px; font-weight: 700; color: #3d2c1e; margin-bottom: 14px; }
+  .cm-prof-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .cm-prof-card {
+    background: #fffdf5; border: 2px solid #d6c5a8; border-radius: 14px;
+    padding: 14px; display: flex; align-items: center; gap: 12px;
+    box-shadow: 3px 3px 0px #c9b99a; cursor: pointer; transition: all 0.15s;
   }
-
-  /* PROFESSOR PINS */
-  .cm-pin {
-    position: absolute; display: flex; flex-direction: column; align-items: center;
-    cursor: pointer; z-index: 20; transition: all 0.2s;
-  }
-  .cm-pin:hover { transform: scale(1.15); z-index: 30; }
-  .cm-pin-bubble {
-    background: #3d2c1e; border: 2px solid #c0570e; border-radius: 12px;
-    padding: 4px 8px; display: flex; align-items: center; gap: 4px;
-    box-shadow: 2px 2px 0px #c0570e; white-space: nowrap;
-  }
-  .cm-pin-emoji { font-size: 14px; }
-  .cm-pin-name { font-size: 10px; font-weight: 700; color: #f5efe0; }
-  .cm-pin-tail {
-    width: 0; height: 0;
-    border-left: 6px solid transparent; border-right: 6px solid transparent;
-    border-top: 8px solid #3d2c1e;
-  }
-  .cm-pin-dot {
-    width: 10px; height: 10px; border-radius: 50%; background: #c0570e;
-    border: 2px solid #fff; margin-top: -3px;
-    animation: cm-pulse 1.5s ease-in-out infinite;
-  }
-
-  /* LEGEND */
-  .cm-legend {
-    position: absolute; bottom: 12px; left: 12px;
-    background: rgba(255,253,245,0.92); border: 1.5px solid #c9b99a;
-    border-radius: 12px; padding: 10px 14px; backdrop-filter: blur(8px);
-  }
-  .cm-legend-title { font-family: 'Caveat', cursive; font-size: 14px; font-weight: 700; color: #3d2c1e; margin-bottom: 6px; }
-  .cm-legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #5c4033; margin-bottom: 3px; }
-  .cm-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-
-  /* ZOOM CONTROLS */
-  .cm-zoom {
-    position: absolute; top: 12px; right: 12px;
-    display: flex; flex-direction: column; gap: 4px;
-  }
-  .cm-zoom-btn {
-    width: 32px; height: 32px; background: #fffdf5; border: 2px solid #c9b99a;
-    border-radius: 8px; display: flex; align-items: center; justify-content: center;
-    cursor: pointer; font-size: 16px; font-weight: 700; color: #3d2c1e;
-    transition: all 0.15s; box-shadow: 2px 2px 0px #c9b99a;
-  }
-  .cm-zoom-btn:hover { background: #f0e8d8; }
-
-  /* PROFESSOR LIST */
-  .cm-section-title {
-    font-family: 'Caveat', cursive; font-size: 20px; font-weight: 700;
-    color: #5c4033; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;
-  }
-  .cm-view-all { font-size: 13px; color: #c0570e; cursor: pointer; font-family: 'DM Sans', sans-serif; font-weight: 600; text-decoration: underline; text-decoration-style: wavy; }
-
-  .cm-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-
-  .cm-card {
-    background: #fffdf5; border: 2px solid #c9b99a; border-radius: 18px;
-    padding: 20px; box-shadow: 4px 4px 0px #c9b99a;
-  }
-
-  .cm-prof-item {
-    display: flex; align-items: center; gap: 12px; padding: 10px 8px;
-    border-bottom: 1.5px dashed #e0d0b8; border-radius: 10px; cursor: pointer; transition: background 0.15s;
-  }
-  .cm-prof-item:last-child { border-bottom: none; }
-  .cm-prof-item:hover { background: #faf3e0; }
-  .cm-prof-av {
-    width: 42px; height: 42px; border-radius: 12px; background: #3d2c1e;
-    border: 2px solid #c9b99a; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;
-  }
-  .cm-prof-name { font-size: 13px; font-weight: 600; color: #3d2c1e; }
-  .cm-prof-loc { font-size: 11px; color: #9c8060; margin-top: 2px; }
+  .cm-prof-card:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0px #c0570e; border-color: #c0570e; }
+  .cm-prof-card.selected { border-color: #c0570e; background: #fff8f0; box-shadow: 4px 4px 0px #c0570e; }
+  .cm-prof-avatar { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #c9b99a; display: flex; align-items: center; justify-content: center; font-size: 22px; background: #f0e8d8; flex-shrink: 0; }
+  .cm-prof-name { font-weight: 700; font-size: 14px; color: #3d2c1e; }
+  .cm-prof-dept { font-size: 11px; color: #9c8060; margin-top: 2px; }
   .cm-prof-status {
-    margin-left: auto; font-size: 10px; font-weight: 700;
-    padding: 3px 10px; border-radius: 20px; flex-shrink: 0;
+    margin-left: auto; font-size: 10px; font-weight: 700; padding: 4px 10px;
+    border-radius: 20px; flex-shrink: 0;
   }
   .cm-prof-status.free { background: #e8f5e9; color: #388e3c; border: 1px solid #a5d6a7; }
   .cm-prof-status.busy { background: #fde8e8; color: #c62828; border: 1px solid #ef9a9a; }
-  .cm-prof-status.away { background: #fff8e1; color: #e65100; border: 1px solid #ffe082; }
+  .cm-prof-status.offline { background: #f5f5f5; color: #757575; border: 1px solid #e0e0e0; }
 
-  /* BUILDING LIST */
-  .cm-building-item {
-    display: flex; align-items: center; gap: 10px; padding: 10px 8px;
-    border-bottom: 1.5px dashed #e0d0b8; cursor: pointer; transition: background 0.15s; border-radius: 8px;
+  .cm-popup {
+    position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%);
+    background: #fffdf5; border: 2px solid #c0570e; border-radius: 16px;
+    padding: 16px 20px; box-shadow: 4px 4px 0px #c0570e; z-index: 200;
+    min-width: 280px; max-width: 340px;
   }
-  .cm-building-item:last-child { border-bottom: none; }
-  .cm-building-item:hover { background: #faf3e0; }
-  .cm-building-color { width: 12px; height: 12px; border-radius: 4px; flex-shrink: 0; }
-  .cm-building-name { font-size: 13px; font-weight: 600; color: #3d2c1e; flex: 1; }
-  .cm-building-count { font-size: 11px; color: #9c8060; }
-
-  /* SEARCH BAR */
-  .cm-search-wrap { position: relative; margin-bottom: 16px; }
-  .cm-search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 16px; }
-  .cm-search {
-    width: 100%; padding: 12px 14px 12px 42px;
-    background: #fffdf5; border: 2px solid #c9b99a; border-radius: 12px;
-    font-size: 14px; color: #3d2c1e; outline: none; box-shadow: 3px 3px 0px #c9b99a;
-    font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+  .cm-popup-name { font-family: 'Caveat', cursive; font-size: 20px; font-weight: 700; color: #3d2c1e; }
+  .cm-popup-dept { font-size: 12px; color: #9c8060; margin-bottom: 10px; }
+  .cm-popup-building { font-size: 13px; font-weight: 600; color: #5c4033; margin-bottom: 12px; }
+  .cm-popup-btn {
+    width: 100%; padding: 10px; background: #3d2c1e; border: none; border-radius: 10px;
+    color: #f5efe0; font-family: 'Caveat', cursive; font-size: 16px; font-weight: 700;
+    cursor: pointer; box-shadow: 2px 2px 0px #c0570e;
   }
-  .cm-search::placeholder { color: #bfaa90; }
-  .cm-search:focus { border-color: #c0570e; box-shadow: 3px 3px 0px #c0570e; }
-
-  /* TOOLTIP */
-  .cm-tooltip {
-    position: absolute; background: #fffdf5; border: 2px solid #c9b99a;
-    border-radius: 14px; padding: 14px; box-shadow: 4px 4px 0px #c9b99a;
-    z-index: 50; min-width: 200px; top: 20px; left: 50%; transform: translateX(-50%);
-  }
-  .cm-tooltip-name { font-family: 'Caveat', cursive; font-size: 18px; font-weight: 700; color: #3d2c1e; }
-  .cm-tooltip-dept { font-size: 12px; color: #9c8060; margin: 2px 0 8px; }
-  .cm-tooltip-btn {
-    width: 100%; padding: 8px; background: #3d2c1e; border: none; border-radius: 8px;
-    color: #f5efe0; font-size: 13px; font-weight: 600; cursor: pointer;
-    font-family: 'Caveat', cursive; font-size: 16px; box-shadow: 2px 2px 0px #c0570e;
+  .cm-popup-close {
+    position: absolute; top: 10px; right: 12px; background: none; border: none;
+    font-size: 18px; cursor: pointer; color: #9c8060;
   }
 
-  /* BOTTOM NAV */
+  .cm-empty { text-align: center; padding: 30px; color: #9c8060; font-family: 'Caveat', cursive; font-size: 18px; }
+
   .cm-bottom-nav {
     position: fixed; bottom: 0; left: 0; right: 0;
     background: #fffdf5; border-top: 2px solid #c9b99a;
     display: flex; justify-content: space-around; padding: 10px 0 14px; z-index: 100;
   }
-  .cm-nav-item {
-    display: flex; flex-direction: column; align-items: center; gap: 3px;
-    cursor: pointer; padding: 4px 16px; border-radius: 10px; transition: background 0.15s;
-  }
+  .cm-nav-item { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; padding: 4px 16px; border-radius: 10px; }
   .cm-nav-item:hover { background: #f0e8d8; }
-  .cm-nav-item-icon { font-size: 20px; }
-  .cm-nav-item-label { font-size: 10px; font-weight: 600; color: #9c8060; }
-  .cm-nav-item.active .cm-nav-item-label { color: #c0570e; }
-
-  @media (max-width: 700px) {
-    .cm-stats { grid-template-columns: repeat(2,1fr); }
-    .cm-two-col { grid-template-columns: 1fr; }
-    .cm-map-inner { height: 300px; }
-  }
+  .cm-nav-icon { font-size: 20px; }
+  .cm-nav-label { font-size: 10px; font-weight: 600; color: #9c8060; }
+  .cm-nav-item.active .cm-nav-label { color: #c0570e; }
 `;
 
-const professors = [
-  { emoji: '👨‍💻', name: 'Dr. R. Sharma', dept: 'CS', loc: 'Room 204, CS Block', status: 'free', x: '22%', y: '28%' },
-  { emoji: '👩‍🔬', name: 'Prof. A. Kulkarni', dept: 'AI', loc: 'AI Lab, Room 301', status: 'busy', x: '58%', y: '22%' },
-  { emoji: '👨‍🏫', name: 'Dr. V. Mehta', dept: 'DBMS', loc: 'Faculty Lounge', status: 'away', x: '72%', y: '55%' },
-  { emoji: '👩‍💼', name: 'Prof. S. Desai', dept: 'SE', loc: 'Room 112, SE Block', status: 'free', x: '38%', y: '62%' },
-  { emoji: '🧑‍🔬', name: 'Dr. P. Joshi', dept: 'Networks', loc: 'Room 209, CS Block', status: 'free', x: '18%', y: '58%' },
-];
-
-const buildings = [
-  { name: 'CS Block', color: '#c5a879', count: '2 profs', icon: '💻', x: '12%', y: '18%', w: '140px', h: '90px', type: 'cs' },
-  { name: 'AI Lab', color: '#90caf9', count: '1 prof', icon: '🤖', x: '48%', y: '12%', w: '120px', h: '80px', type: 'ai' },
-  { name: 'Library', color: '#a5d6a7', count: '0 profs', icon: '📚', x: '72%', y: '10%', w: '100px', h: '70px', type: 'lib' },
-  { name: 'Admin Block', color: '#ffcc80', count: '0 profs', icon: '🏛️', x: '62%', y: '42%', w: '110px', h: '80px', type: 'admin' },
-  { name: 'SE Block', color: '#ef9a9a', count: '1 prof', icon: '⚙️', x: '28%', y: '50%', w: '120px', h: '80px', type: 'canteen' },
-  { name: 'Networks Lab', color: '#ce93d8', count: '1 prof', icon: '🌐', x: '8%', y: '46%', w: '110px', h: '75px', type: 'lab' },
-  { name: 'Canteen', color: '#80deea', count: '—', icon: '🍽️', x: '44%', y: '72%', w: '100px', h: '60px', type: 'sports' },
-  { name: 'Parking', color: '#c8c8c8', count: '—', icon: '🅿️', x: '76%', y: '74%', w: '90px', h: '55px', type: 'parking' },
-];
+const EMOJIS = ['👨‍💻','👩‍🔬','👨‍🏫','👩‍💼','🧑‍🔬','👩‍🏫','👨‍🎓','👩‍🎓'];
+const getEmoji = (name) => EMOJIS[(name||'A').charCodeAt(0) % EMOJIS.length];
 
 export default function CampusMap() {
   const navigate = useNavigate();
-  const [activeFloor, setActiveFloor] = useState(0);
-  const [activeNav, setActiveNav] = useState('map');
-  const [selectedPin, setSelectedPin] = useState(null);
-  const [search, setSearch] = useState('');
+  const [professors, setProfessors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
 
-  const floors = ['Ground Floor', '1st Floor', '2nd Floor', '3rd Floor'];
+  useEffect(() => {
+    fetchProfessors();
+    // Auto refresh every 30 seconds
+    const interval = setInterval(fetchProfessors, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const filtered = professors.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.dept.toLowerCase().includes(search.toLowerCase()) ||
-    p.loc.toLowerCase().includes(search.toLowerCase())
-  );
+  const fetchProfessors = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/professors`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setProfessors(data);
+        setLastUpdated(new Date());
+      }
+    } catch (err) {
+      console.log('Could not load professors');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const freeCount = professors.filter(p => p.status === 'free').length;
+  const busyCount = professors.filter(p => p.status !== 'free').length;
+
+  // Build professor pins for SVG
+  const profPins = professors.map((p, i) => {
+    const building = getDeptBuilding(p.department);
+    const pos = getPinPos(building, i);
+    return { ...p, pinX: pos.x, pinY: pos.y, building };
+  });
 
   return (
     <>
       <style>{styles}</style>
       <div className="cm-page">
-
-        {/* Nav */}
         <div className="cm-nav">
           <div className="cm-back" onClick={() => navigate('/student/dashboard')}>←</div>
           <span className="cm-nav-title">🗺️ campus map</span>
           <div className="cm-live-badge">
-            <div className="cm-live-dot" /> LIVE
+            <div className="cm-live-dot" />
+            LIVE
           </div>
         </div>
 
         <div className="cm-content">
-
           {/* Stats */}
           <div className="cm-stats">
             {[
-              { icon: '👨‍🏫', num: 5, label: 'On Campus' },
-              { icon: '🟢', num: 3, label: 'Available Now' },
-              { icon: '🏫', num: 8, label: 'Buildings' },
-              { icon: '📍', num: 12, label: 'Tracked Rooms' },
+              { icon: '👨‍🏫', val: professors.length, label: 'Total Professors' },
+              { icon: '✅', val: freeCount, label: 'Available Now' },
+              { icon: '🔴', val: busyCount, label: 'Busy / In Class' },
+              { icon: '🕐', val: lastUpdated.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}), label: 'Last Updated' },
             ].map(s => (
               <div className="cm-stat" key={s.label}>
-                <div className="cm-stat-icon">{s.icon}</div>
-                <div>
-                  <div className="cm-stat-num">{s.num}</div>
+                <span className="cm-stat-icon">{s.icon}</span>
+                <div className="cm-stat-info">
+                  <div className="cm-stat-val">{s.val}</div>
                   <div className="cm-stat-label">{s.label}</div>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Search */}
-          <div className="cm-search-wrap">
-            <span className="cm-search-icon">🔍</span>
-            <input className="cm-search" placeholder="search professor or building..." value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
+          {/* SVG Campus Map */}
+          <div className="cm-map-card">
+            <div className="cm-map-title">📍 MIT Academy of Engineering, Pune</div>
+            <div className="cm-svg-wrap">
+              <svg viewBox="0 0 680 360" xmlns="http://www.w3.org/2000/svg" style={{width:'100%',minWidth:'500px'}}>
+                {/* Campus ground */}
+                <rect x="10" y="10" width="660" height="340" rx="12" fill="#f0e8d0" stroke="#c9b99a" strokeWidth="2"/>
 
-          {/* Floor Tabs */}
-          <div className="cm-floor-tabs">
-            {floors.map((f, i) => (
-              <button key={f} className={`cm-floor-tab ${activeFloor === i ? 'active' : ''}`} onClick={() => setActiveFloor(i)}>{f}</button>
-            ))}
-          </div>
+                {/* Roads */}
+                <line x1="10" y1="195" x2="670" y2="195" stroke="#d4c4a0" strokeWidth="12"/>
+                <line x1="310" y1="10" x2="310" y2="350" stroke="#d4c4a0" strokeWidth="12"/>
 
-          {/* Map */}
-          <div className="cm-map-wrap">
-            <div className="cm-map-inner" onClick={() => setSelectedPin(null)}>
-              <div className="cm-map-grid-bg" />
+                {/* Gate */}
+                <rect x="295" y="330" width="30" height="20" rx="3" fill="#8B6914" stroke="#5c4033" strokeWidth="2"/>
+                <text x="310" y="345" textAnchor="middle" fontSize="8" fill="#fff" fontWeight="bold">GATE</text>
 
-              {/* Paths */}
-              <div className="cm-path" style={{width:'2px',height:'60%',left:'50%',top:'20%'}} />
-              <div className="cm-path" style={{width:'70%',height:'2px',left:'15%',top:'50%'}} />
-              <div className="cm-path" style={{width:'40%',height:'2px',left:'10%',top:'70%'}} />
+                {/* Buildings */}
+                {BUILDINGS.map(b => (
+                  <g key={b.id}>
+                    <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="8" fill={b.color} stroke="#c9b99a" strokeWidth="2"/>
+                    <text x={b.x + b.w/2} y={b.y + b.h/2 - 6} textAnchor="middle" fontSize="11" fontWeight="bold" fill="#3d2c1e">{b.name}</text>
+                    <text x={b.x + b.w/2} y={b.y + b.h/2 + 8} textAnchor="middle" fontSize="9" fill="#7c6050">MIT AOE</text>
+                  </g>
+                ))}
 
-              {/* Buildings */}
-              {buildings.map(b => (
-                <div key={b.name} className={`cm-building ${b.type}`}
-                  style={{left:b.x, top:b.y, width:b.w, height:b.h}}>
-                  <div className="cm-building-icon">{b.icon}</div>
-                  <div className="cm-building-label">{b.name}</div>
+                {/* Trees */}
+                {[[50,50],[600,50],[50,300],[600,300],[155,195],[465,195]].map(([x,y],i) => (
+                  <g key={i}>
+                    <circle cx={x} cy={y} r="14" fill="#a5d6a7" stroke="#66bb6a" strokeWidth="1.5"/>
+                    <line x1={x} y1={y+14} x2={x} y2={y+22} stroke="#795548" strokeWidth="2"/>
+                  </g>
+                ))}
+
+                {/* Professor pins */}
+                {profPins.map((p) => (
+                  <g key={p.id} onClick={() => setSelected(selected?.id === p.id ? null : p)} style={{cursor:'pointer'}}>
+                    <circle cx={p.pinX} cy={p.pinY} r="12" fill={STATUS_COLOR[p.status] || '#4caf50'} stroke="#fff" strokeWidth="2" opacity="0.9"/>
+                    <text x={p.pinX} y={p.pinY+5} textAnchor="middle" fontSize="10">{getEmoji(p.name)}</text>
+                    {/* Pulse animation for free professors */}
+                    {p.status === 'free' && (
+                      <circle cx={p.pinX} cy={p.pinY} r="16" fill="none" stroke="#4caf50" strokeWidth="1.5" opacity="0.5">
+                        <animate attributeName="r" values="12;20;12" dur="2s" repeatCount="indefinite"/>
+                        <animate attributeName="opacity" values="0.6;0;0.6" dur="2s" repeatCount="indefinite"/>
+                      </circle>
+                    )}
+                  </g>
+                ))}
+
+                {/* Compass */}
+                <g transform="translate(630,40)">
+                  <circle cx="0" cy="0" r="20" fill="#fffdf5" stroke="#c9b99a" strokeWidth="1.5"/>
+                  <text x="0" y="-8" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#c0570e">N</text>
+                  <text x="0" y="13" textAnchor="middle" fontSize="7" fill="#9c8060">S</text>
+                  <text x="-12" y="3" textAnchor="middle" fontSize="7" fill="#9c8060">W</text>
+                  <text x="12" y="3" textAnchor="middle" fontSize="7" fill="#9c8060">E</text>
+                </g>
+              </svg>
+            </div>
+
+            {/* Legend */}
+            <div className="cm-legend">
+              {[
+                { color: '#4caf50', label: 'Free / Available' },
+                { color: '#f44336', label: 'Busy' },
+                { color: '#ff9800', label: 'In Class' },
+                { color: '#9e9e9e', label: 'Offline' },
+              ].map(l => (
+                <div className="cm-legend-item" key={l.label}>
+                  <div className="cm-legend-dot" style={{background: l.color}}/>
+                  {l.label}
                 </div>
               ))}
+            </div>
+          </div>
 
-              {/* Professor Pins */}
-              {professors.map((p, i) => (
-                <div key={p.name} className="cm-pin" style={{left:p.x, top:p.y}}
-                  onClick={e => { e.stopPropagation(); setSelectedPin(selectedPin === i ? null : i); }}>
-                  <div className="cm-pin-bubble">
-                    <span className="cm-pin-emoji">{p.emoji}</span>
-                    <span className="cm-pin-name">{p.name.split(' ')[0]} {p.name.split(' ')[1]}</span>
-                  </div>
-                  <div className="cm-pin-tail" />
-                  <div className="cm-pin-dot" />
-                  {selectedPin === i && (
-                    <div className="cm-tooltip">
-                      <div className="cm-tooltip-name">{p.name}</div>
-                      <div className="cm-tooltip-dept">{p.dept} · {p.loc}</div>
-                      <button className="cm-tooltip-btn" onClick={() => navigate('/student/request')}>book meeting →</button>
+          {/* Professor list */}
+          <div className="cm-profs">
+            <div className="cm-profs-title">👨‍🏫 Professors on Campus</div>
+            {loading ? (
+              <div className="cm-empty">Loading professors...</div>
+            ) : professors.length === 0 ? (
+              <div className="cm-empty">😕 No professors registered yet!</div>
+            ) : (
+              <div className="cm-prof-list">
+                {professors.map(p => (
+                  <div key={p.id}
+                    className={`cm-prof-card ${selected?.id === p.id ? 'selected' : ''}`}
+                    onClick={() => setSelected(selected?.id === p.id ? null : p)}>
+                    <div className="cm-prof-avatar">{getEmoji(p.name)}</div>
+                    <div>
+                      <div className="cm-prof-name">{p.name}</div>
+                      <div className="cm-prof-dept">{p.department || 'MIT AOE'}</div>
                     </div>
-                  )}
-                </div>
-              ))}
-
-              {/* Legend */}
-              <div className="cm-legend">
-                <div className="cm-legend-title">legend</div>
-                <div className="cm-legend-item"><div className="cm-legend-dot" style={{background:'#4caf50'}} /> available</div>
-                <div className="cm-legend-item"><div className="cm-legend-dot" style={{background:'#f44336'}} /> in class</div>
-                <div className="cm-legend-item"><div className="cm-legend-dot" style={{background:'#ff9800'}} /> away</div>
-              </div>
-
-              {/* Zoom */}
-              <div className="cm-zoom">
-                <div className="cm-zoom-btn">+</div>
-                <div className="cm-zoom-btn">−</div>
-                <div className="cm-zoom-btn" style={{fontSize:'12px'}}>⌖</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Prof List + Building Directory */}
-          <div className="cm-two-col">
-
-            {/* Professors on Campus */}
-            <div className="cm-card">
-              <div className="cm-section-title">
-                📍 professors on campus
-                <span className="cm-view-all" onClick={() => navigate('/student/find')}>view all →</span>
-              </div>
-              {filtered.map(p => (
-                <div className="cm-prof-item" key={p.name} onClick={() => navigate('/student/professor/1')}>
-                  <div className="cm-prof-av">{p.emoji}</div>
-                  <div>
-                    <div className="cm-prof-name">{p.name}</div>
-                    <div className="cm-prof-loc">📍 {p.loc}</div>
+                    <span className={`cm-prof-status ${p.status || 'free'}`}>
+                      {p.status === 'free' ? '✅ Free' : p.status === 'busy' ? '🔴 Busy' : '⚫ Offline'}
+                    </span>
                   </div>
-                  <span className={`cm-prof-status ${p.status}`}>
-                    {p.status === 'free' ? 'Available' : p.status === 'busy' ? 'In Class' : 'Away'}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* Building Directory */}
-            <div className="cm-card">
-              <div className="cm-section-title">🏫 building directory</div>
-              {buildings.map(b => (
-                <div className="cm-building-item" key={b.name}>
-                  <div className="cm-building-color" style={{background:b.color}} />
-                  <span style={{fontSize:'16px'}}>{b.icon}</span>
-                  <div className="cm-building-name">{b.name}</div>
-                  <div className="cm-building-count">{b.count}</div>
-                </div>
-              ))}
-            </div>
-
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Bottom Nav */}
+        {/* Popup when professor pin clicked */}
+        {selected && (
+          <div className="cm-popup">
+            <button className="cm-popup-close" onClick={() => setSelected(null)}>✕</button>
+            <div className="cm-popup-name">{getEmoji(selected.name)} {selected.name}</div>
+            <div className="cm-popup-dept">{selected.department || 'MIT AOE'}</div>
+            <div className="cm-popup-building">
+              📍 {getDeptBuilding(selected.department).name}
+              &nbsp;·&nbsp;
+              <span style={{color: STATUS_COLOR[selected.status] || '#4caf50', fontWeight:700}}>
+                {selected.status === 'free' ? '✅ Available' : '🔴 Busy'}
+              </span>
+            </div>
+            <button className="cm-popup-btn" onClick={() => navigate('/student/request')}>
+              📅 Request Meeting →
+            </button>
+          </div>
+        )}
+
         <div className="cm-bottom-nav">
           {[
-            { id: 'home', icon: '🏠', label: 'home', path: '/student/dashboard' },
-            { id: 'find', icon: '🔍', label: 'find', path: '/student/find' },
-            { id: 'map', icon: '🗺️', label: 'map', path: '/student/map' },
-            { id: 'ai', icon: '🤖', label: 'AI chat', path: '/student/ai' },
-            { id: 'notif', icon: '🔔', label: 'alerts', path: '/student/notifications' },
+            { icon: '🏠', label: 'home', path: '/student/dashboard' },
+            { icon: '🔍', label: 'find', path: '/student/find' },
+            { icon: '🗺️', label: 'map', path: '/student/map', active: true },
+            { icon: '🤖', label: 'AI chat', path: '/student/ai' },
+            { icon: '🔔', label: 'alerts', path: '/student/notifications' },
           ].map(n => (
-            <div key={n.id} className={`cm-nav-item ${activeNav===n.id?'active':''}`}
-              onClick={() => { setActiveNav(n.id); navigate(n.path); }}>
-              <span className="cm-nav-item-icon">{n.icon}</span>
-              <span className="cm-nav-item-label">{n.label}</span>
+            <div key={n.label} className={`cm-nav-item ${n.active ? 'active' : ''}`} onClick={() => navigate(n.path)}>
+              <span className="cm-nav-icon">{n.icon}</span>
+              <span className="cm-nav-label">{n.label}</span>
             </div>
           ))}
         </div>
-
       </div>
     </>
   );
